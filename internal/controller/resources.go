@@ -16,11 +16,14 @@ import (
 	"github.com/pedrincandido/mongo-replicaset-operator/internal/mongoexec"
 )
 
-const mongoPort = 27017
+const (
+	mongoPort = 27017
+	appName   = "mongodb"
+)
 
 func labelsFor(m *dbv1alpha1.MongoReplicaSet) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":       "mongodb",
+		"app.kubernetes.io/name":       appName,
 		"app.kubernetes.io/instance":   m.Name,
 		"app.kubernetes.io/managed-by": "mongo-replicaset-operator",
 	}
@@ -71,7 +74,7 @@ func headlessService(m *dbv1alpha1.MongoReplicaSet) *corev1.Service {
 			ClusterIP:                corev1.ClusterIPNone,
 			PublishNotReadyAddresses: true,
 			Selector:                 labelsFor(m),
-			Ports:                    []corev1.ServicePort{{Name: "mongodb", Port: mongoPort, TargetPort: intstr.FromInt32(mongoPort)}},
+			Ports:                    []corev1.ServicePort{{Name: appName, Port: mongoPort, TargetPort: intstr.FromInt32(mongoPort)}},
 		},
 	}
 }
@@ -122,7 +125,7 @@ func mutateStatefulSet(m *dbv1alpha1.MongoReplicaSet, sts *appsv1.StatefulSet) {
 				Image:           image(m),
 				ImagePullPolicy: corev1.PullIfNotPresent,
 				Command:         []string{"mongod", "--replSet", m.Name, "--bind_ip_all", "--port", fmt.Sprint(mongoPort), "--dbpath", "/data/db"},
-				Ports:           []corev1.ContainerPort{{Name: "mongodb", ContainerPort: mongoPort}},
+				Ports:           []corev1.ContainerPort{{Name: appName, ContainerPort: mongoPort}},
 				VolumeMounts:    []corev1.VolumeMount{{Name: "data", MountPath: "/data/db"}},
 				Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("100m"),

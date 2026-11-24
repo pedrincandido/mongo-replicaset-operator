@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -70,9 +70,10 @@ func main() {
 	name := flag.String("name", "demo", "MongoReplicaSet name")
 	namespace := flag.String("namespace", "default", "namespace")
 	rounds := flag.Int("rounds", 5, "how many times to kill the primary")
-	mode := flag.String("mode", "graceful", "graceful | force | freeze (see inject)")
+	mode := flag.String("mode", modeGraceful, "graceful | force | freeze (see inject)")
 	window := flag.Duration("window", 45*time.Second, "how long the writer runs per round")
-	driver := flag.String("driver", "default", "default: driver defaults; tuned: heartbeatFrequencyMS=1000, connectTimeoutMS=2000")
+	driver := flag.String("driver", "default",
+		"default: driver defaults; tuned: heartbeatFrequencyMS=1000, connectTimeoutMS=2000")
 	out := flag.String("out", "", "append a markdown report to this file")
 	flag.Parse()
 
@@ -82,8 +83,14 @@ func main() {
 	}
 }
 
+const (
+	modeGraceful = "graceful"
+	modeForce    = "force"
+	modeFreeze   = "freeze"
+)
+
 func run(name, namespace string, rounds int, mode, driver string, window time.Duration, out string) error {
-	if mode != "graceful" && mode != "force" && mode != "freeze" {
+	if mode != modeGraceful && mode != modeForce && mode != modeFreeze {
 		return fmt.Errorf("--mode must be graceful, force or freeze")
 	}
 	cfg, err := config.GetConfig()
@@ -175,9 +182,11 @@ func run(name, namespace string, rounds int, mode, driver string, window time.Du
 		if err != nil {
 			return err
 		}
-		defer f.Close()
-		_, err = f.WriteString(report + "\n")
-		return err
+		if _, err := f.WriteString(report + "\n"); err != nil {
+			_ = f.Close()
+			return err
+		}
+		return f.Close()
 	}
 	return nil
 }
@@ -198,11 +207,11 @@ func inject(ctx context.Context, c client.Client, mode, namespace, podName strin
 		return err
 	}
 	switch mode {
-	case "graceful":
+	case modeGraceful:
 		return c.Delete(ctx, pod)
-	case "force":
+	case modeForce:
 		return c.Delete(ctx, pod, client.GracePeriodSeconds(0))
-	case "freeze":
+	case modeFreeze:
 		return signalMongod(ctx, pod, "STOP")
 	}
 	return fmt.Errorf("unknown mode %q", mode)
@@ -211,7 +220,7 @@ func inject(ctx context.Context, c client.Client, mode, namespace, podName strin
 // heal resumes a frozen mongod. It comes back as a stale primary, sees a
 // newer term, and steps down to secondary on its own.
 func heal(ctx context.Context, c client.Client, mode, namespace, podName string) error {
-	if mode != "freeze" {
+	if mode != modeFreeze {
 		return nil
 	}
 	pod := &corev1.Pod{}
@@ -239,7 +248,9 @@ func signalMongod(ctx context.Context, pod *corev1.Pod, sig string) error {
 	return nil
 }
 
-func waitReady(ctx context.Context, c client.Client, key types.NamespacedName, timeout time.Duration) (*dbv1alpha1.MongoReplicaSet, error) {
+func waitReady(
+	ctx context.Context, c client.Client, key types.NamespacedName, timeout time.Duration,
+) (*dbv1alpha1.MongoReplicaSet, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		var m dbv1alpha1.MongoReplicaSet
@@ -262,14 +273,17 @@ func hosts(m *dbv1alpha1.MongoReplicaSet) []string {
 
 func render(name, mode, driver string, rs []round) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "### %s — mode `%s`, driver `%s`, %d rounds (%s)\n\n", name, mode, driver, len(rs), time.Now().Format("2006-01-02"))
-	b.WriteString("| Round | Failed member | New primary | Client majority-write gap | Failed attempts | Election (server, from operator) |\n|---|---|---|---|---|---|\n")
+	fmt.Fprintf(&b, "### %s — mode `%s`, driver `%s`, %d rounds (%s)\n\n",
+		name, mode, driver, len(rs), time.Now().Format("2006-01-02"))
+	b.WriteString("| Round | Failed member | New primary | Client majority-write gap | Failed attempts |" +
+		" Election (server, from operator) |\n|---|---|---|---|---|---|\n")
 	gaps := make([]float64, 0, len(rs))
 	for _, r := range rs {
-		fmt.Fprintf(&b, "| %d | %s | %s | %.2fs | %d | %s |\n", r.n, r.killed, r.newPrimary, r.gap.Seconds(), r.failedWrites, orDash(r.operatorSeconds))
+		fmt.Fprintf(&b, "| %d | %s | %s | %.2fs | %d | %s |\n",
+			r.n, r.killed, r.newPrimary, r.gap.Seconds(), r.failedWrites, orDash(r.operatorSeconds))
 		gaps = append(gaps, r.gap.Seconds())
 	}
-	sort.Float64s(gaps)
+	slices.Sort(gaps)
 	if len(gaps) > 0 {
 		fmt.Fprintf(&b, "\n**p50 %.2fs · p95 %.2fs · max %.2fs**\n", pct(gaps, 50), pct(gaps, 95), gaps[len(gaps)-1])
 	}

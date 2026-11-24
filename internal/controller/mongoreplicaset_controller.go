@@ -17,9 +17,10 @@ limitations under the License.
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -237,7 +238,7 @@ func (r *MongoReplicaSetReconciler) memberPods(ctx context.Context, m *dbv1alpha
 		return nil, err
 	}
 	pods := list.Items
-	sort.Slice(pods, func(i, j int) bool { return ordinal(pods[i].Name) < ordinal(pods[j].Name) })
+	slices.SortFunc(pods, func(a, b corev1.Pod) int { return cmp.Compare(ordinal(a.Name), ordinal(b.Name)) })
 	return pods, nil
 }
 
