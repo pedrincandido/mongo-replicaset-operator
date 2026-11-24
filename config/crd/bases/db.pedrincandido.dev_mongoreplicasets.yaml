@@ -1,0 +1,257 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: mongoreplicasets.db.pedrincandido.dev
+spec:
+  group: db.pedrincandido.dev
+  names:
+    kind: MongoReplicaSet
+    listKind: MongoReplicaSetList
+    plural: mongoreplicasets
+    shortNames:
+    - mrs
+    singular: mongoreplicaset
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.primary
+      name: Primary
+      type: string
+    - jsonPath: .status.readyMembers
+      name: Ready
+      type: integer
+    - jsonPath: .spec.members
+      name: Members
+      type: integer
+    - jsonPath: .status.primaryChanges
+      name: Failovers
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: MongoReplicaSet is the Schema for the mongoreplicasets API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of MongoReplicaSet
+            properties:
+              backup:
+                description: backup enables scheduled backups. Omit it to run without
+                  backups.
+                properties:
+                  retain:
+                    default: 3
+                    description: retain is how many backup archives to keep on the
+                      backup volume.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  schedule:
+                    description: schedule is a cron expression, for example "*/30
+                      * * * *".
+                    minLength: 9
+                    type: string
+                  storageSize:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    default: 1Gi
+                    description: storageSize is the size of the volume that holds
+                      the archives.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                required:
+                - schedule
+                type: object
+              members:
+                default: 3
+                description: |-
+                  members is the number of mongod instances in the replica set.
+                  An odd number keeps a clear majority when one member is lost.
+                format: int32
+                maximum: 7
+                minimum: 3
+                type: integer
+              storageSize:
+                anyOf:
+                - type: integer
+                - type: string
+                default: 1Gi
+                description: storageSize is the size of each member's data volume.
+                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                x-kubernetes-int-or-string: true
+              version:
+                default: "8.0"
+                description: version is the MongoDB image tag, for example "8.0".
+                type: string
+            type: object
+            x-kubernetes-validations:
+            - message: members must be odd so an election always has a majority
+              rule: self.members % 2 == 1
+          status:
+            description: status defines the observed state of MongoReplicaSet
+            properties:
+              conditions:
+                description: conditions follow the Kubernetes API conventions (Initialized,
+                  Available).
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastBackupTime:
+                description: lastBackupTime is when the last backup job completed
+                  successfully.
+                format: date-time
+                type: string
+              lastFailoverSeconds:
+                description: |-
+                  lastFailoverSeconds is the last election's duration from mongo's own
+                  clocks: the new primary's electionDate minus the last heartbeat received
+                  from the old primary.
+                type: string
+              members:
+                description: members is the per-member view from replSetGetStatus.
+                items:
+                  description: MemberStatus is one member as the replica set reports
+                    it.
+                  properties:
+                    healthy:
+                      description: healthy is false when the other members cannot
+                        reach it.
+                      type: boolean
+                    lagSeconds:
+                      description: lagSeconds is how far its oplog is behind the primary.
+                      format: int64
+                      type: integer
+                    name:
+                      description: name is the member's host:port.
+                      type: string
+                    state:
+                      description: state is the replica set state, for example PRIMARY
+                        or SECONDARY.
+                      type: string
+                  required:
+                  - healthy
+                  - name
+                  - state
+                  type: object
+                type: array
+              observedGeneration:
+                description: observedGeneration is the spec generation this status
+                  was computed from.
+                format: int64
+                type: integer
+              phase:
+                description: phase is the coarse state shown by kubectl get.
+                enum:
+                - Pending
+                - Initializing
+                - Ready
+                - Degraded
+                type: string
+              primary:
+                description: primary is the host:port of the current primary, empty
+                  when there is none.
+                type: string
+              primaryChanges:
+                description: primaryChanges counts how many times the operator saw
+                  the primary change.
+                format: int32
+                type: integer
+              primaryLostAt:
+                description: primaryLostAt is set while there is no primary, and cleared
+                  when one is elected.
+                format: date-time
+                type: string
+              readyMembers:
+                description: readyMembers counts members that are healthy and in PRIMARY
+                  or SECONDARY state.
+                format: int32
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

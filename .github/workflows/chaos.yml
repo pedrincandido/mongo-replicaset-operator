@@ -1,0 +1,56 @@
+name: Replica set e2e (kind)
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  replicaset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Create kind cluster
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
+          kind create cluster --name mongo-op --wait 120s
+
+      - name: Install CRD and start the operator
+        run: |
+          make install
+          go build -o bin/manager ./cmd/main.go
+          nohup bin/manager --metrics-bind-address=:8090 --metrics-secure=false --health-probe-bind-address=:8091 > operator.log 2>&1 &
+
+      - name: Create a 3-member replica set and wait for Ready
+        run: |
+          kubectl apply -k config/samples/
+          for i in $(seq 1 60); do
+            phase=$(kubectl get mrs demo -o jsonpath='{.status.phase}' || true)
+            echo "phase=$phase"; [ "$phase" = "Ready" ] && exit 0; sleep 5
+          done
+          kubectl get mrs,pods; exit 1
+
+      - name: Backup and verified restore
+        run: hack/backup-restore-test.sh demo default
+
+      - name: Chaos — clean step-down and hung primary
+        run: |
+          go run ./cmd/chaos --name demo --rounds 2 --mode graceful --out chaos-ci.md
+          go run ./cmd/chaos --name demo --rounds 2 --mode freeze --driver tuned --window 60s --out chaos-ci.md
+          cat chaos-ci.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Operator log and metrics
+        if: always()
+        run: |
+          tail -100 operator.log || true
+          curl -s localhost:8090/metrics | grep '^mongors_' || true

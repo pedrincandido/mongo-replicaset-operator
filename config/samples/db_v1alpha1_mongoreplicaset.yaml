@@ -1,0 +1,15 @@
+apiVersion: db.pedrincandido.dev/v1alpha1
+kind: MongoReplicaSet
+metadata:
+  labels:
+    app.kubernetes.io/name: mongo-replicaset-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: demo
+spec:
+  members: 3
+  version: "8.0"
+  storageSize: 1Gi
+  backup:
+    schedule: "*/30 * * * *"
+    retain: 3
+    storageSize: 1Gi
