@@ -159,7 +159,7 @@ func (r *MongoReplicaSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	if err := r.Status().Update(ctx, &m); err != nil {
 		if apierrors.IsConflict(err) {
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: time.Second}, nil
 		}
 		return ctrl.Result{}, err
 	}
@@ -266,7 +266,10 @@ func ordinal(podName string) int {
 }
 
 // podFromHost turns "name-2.name.ns.svc.cluster.local:27017" into "name-2".
-func podFromHost(host string) string { return strings.SplitN(host, ".", 2)[0] }
+func podFromHost(host string) string {
+	pod, _, _ := strings.Cut(host, ".")
+	return pod
+}
 
 // readStatus asks every ready member at once and uses the lowest-ordinal
 // member that answered. Reading them one by one let a single hung member
@@ -279,14 +282,12 @@ func (r *MongoReplicaSetReconciler) readStatus(ctx context.Context, m *dbv1alpha
 	answers := make([]answer, len(ready))
 	var wg sync.WaitGroup
 	for i, p := range ready {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			cctx, cancel := context.WithTimeout(ctx, statusTimeout)
 			defer cancel()
 			rs, err := r.Exec.Status(cctx, m.Namespace, p.Name)
 			answers[i] = answer{rs, err}
-		}()
+		})
 	}
 	wg.Wait()
 	for i, a := range answers {

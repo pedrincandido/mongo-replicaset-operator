@@ -117,7 +117,7 @@ func run(name, namespace string, rounds int, mode, driver string, window time.Du
 		if err != nil {
 			return err
 		}
-		primaryPod := strings.SplitN(m.Status.Primary, ".", 2)[0]
+		primaryPod, _, _ := strings.Cut(m.Status.Primary, ".")
 		writerPod := ""
 		for j := range m.Spec.Members {
 			if p := fmt.Sprintf("%s-%d", name, j); p != primaryPod {
@@ -166,7 +166,7 @@ func run(name, namespace string, rounds int, mode, driver string, window time.Du
 			return err
 		}
 		r := round{
-			n: i, killed: primaryPod, newPrimary: strings.SplitN(after.Status.Primary, ".", 2)[0],
+			n: i, killed: primaryPod, newPrimary: podName(after.Status.Primary),
 			gap: time.Duration(res.MaxGapMS) * time.Millisecond, failedWrites: res.Failed,
 			operatorSeconds: after.Status.LastFailoverSeconds,
 		}
@@ -261,6 +261,12 @@ func waitReady(
 		time.Sleep(2 * time.Second)
 	}
 	return nil, fmt.Errorf("%s not Ready after %s", key, timeout)
+}
+
+// podName turns "demo-1.demo.ns.svc.cluster.local:27017" into "demo-1".
+func podName(host string) string {
+	pod, _, _ := strings.Cut(host, ".")
+	return pod
 }
 
 func hosts(m *dbv1alpha1.MongoReplicaSet) []string {
